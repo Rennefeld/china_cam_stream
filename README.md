@@ -1,1 +1,44 @@
-# china_cam_stream
+# China Cam Stream
+
+Dieses Programm zeigt einen MJPEG Stream über UDP an und stellt die Bilder sowohl über eine lokale Tkinter GUI als auch über einen integrierten Webserver bereit. Neben dem reinen Anzeigen können verschiedene Bildoperationen angewendet und Aufnahmen erstellt werden.
+
+## Funktionen
+
+- **MJPEG Anzeige** aus einem UDP Stream
+- **Konfigurationsmenü** für Kamera-IP, Kamera-Port, Helligkeit, Kontrast und Sättigung
+- **Bildoperationen**: Drehung in 90°-Schritten, horizontales/vertikales Spiegeln, Schwarz/Weiß
+- **Snapshot und Videoaufnahme**
+- **Weboberfläche** mit denselben Funktionen
+
+## Bedienung
+
+Nach dem Start erscheint die Hauptoberfläche mit dem Videofenster und den Steuerbuttons. 
+Über das Menü `Einstellungen` lassen sich die Kameradaten sowie Bildparameter anpassen. 
+Alle Änderungen werden sofort angewendet und in `settings.json` gespeichert.
+
+### Steuerbuttons
+
+- **Aufnahme**: Startet bzw. beendet die Videoaufnahme im AVI-Format.
+- **Snapshot**: Speichert das aktuelle Bild als JPEG.
+- **Rotate**: Rotiert das Bild um 90°.
+- **Flip H/V**: Spiegelt das Bild horizontal bzw. vertikal.
+- **B/W**: Schaltet zwischen Farbe und Graustufen um.
+
+### Webserver
+
+Parallel zur Desktop-GUI startet automatisch ein Webserver auf Port `5000`. 
+Rufen Sie `http://<IP>:5000` im Browser auf, um die gleichen Bedienelemente per Web zu nutzen.
+
+## Android-Build unter Windows 10
+
+1. Installieren Sie **WSL2** sowie ein aktuelles Ubuntu.
+2. Innerhalb von WSL Python 3, `pip` und `buildozer` installieren:
+   ```bash
+   sudo apt update && sudo apt install python3 python3-pip -y
+   pip install buildozer
+   ```
+3. Erstellen Sie eine Kivy-App-Hülle für `main.py` und passen Sie die `buildozer.spec` an.
+4. Führen Sie `buildozer -v android debug` innerhalb von WSL aus. 
+   Das erzeugte APK finden Sie danach im Unterordner `bin/`.
+5. Übertragen Sie das APK auf Ihr Android-Gerät und installieren Sie es.
+
