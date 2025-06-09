@@ -4,6 +4,7 @@ import time
 import socket
 import threading
 import logging
+import subprocess
 
 
 import cv2
@@ -36,6 +37,7 @@ STREAM_HEIGHT = settings.height
 RESOLUTIONS = [(640, 480), (800, 600), (1280, 720), (1920, 1080)]
 LOGFILE = "debug_udp_streamer.log"
 VIDEO_CODEC = "mp4v"
+VIDEO_FPS = 30
 BRIGHTNESS = settings.brightness
 CONTRAST = settings.contrast
 SATURATION = settings.saturation
@@ -314,7 +316,12 @@ class CameraLayout(BoxLayout):
         if not self.video_writer:
             self.record_temp = os.path.join(os.getcwd(), "record_temp.mp4")
             fourcc = cv2.VideoWriter_fourcc(*VIDEO_CODEC)
-            self.video_writer = cv2.VideoWriter(self.record_temp, fourcc, 10, (STREAM_WIDTH, STREAM_HEIGHT))
+            self.video_writer = cv2.VideoWriter(
+                self.record_temp,
+                fourcc,
+                VIDEO_FPS,
+                (STREAM_WIDTH, STREAM_HEIGHT),
+            )
             self.record_btn.text = "Stop Recording"
             self.start_blink()
         else:
@@ -322,12 +329,28 @@ class CameraLayout(BoxLayout):
             self.stop_blink()
             self.video_writer.release()
             self.video_writer = None
-            name = time.strftime("%Y%m%d_%H%M%S_h4r1_cam_streamer.mp4")
+            name = time.strftime("%Y%m%d_%H%M%S_h4r1_cam_streamer.mpg")
             FileSavePopup("Save video", name, self.save_video).open()
 
     def save_video(self, path):
         if self.record_temp and os.path.exists(self.record_temp):
-            os.replace(self.record_temp, path)
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                self.record_temp,
+                "-r",
+                str(VIDEO_FPS),
+                "-c:v",
+                "mpeg1video",
+                path,
+            ]
+            try:
+                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+                os.remove(self.record_temp)
+            except Exception as e:
+                log(f"ffmpeg conversion failed {e}", self.debug_mode)
+                os.replace(self.record_temp, path)
             log(f"video saved to {path}", self.debug_mode)
 
     def snapshot(self, *_):

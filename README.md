@@ -1,5 +1,6 @@
 # China Cam Stream
 
+
 Dieses Programm zeigt einen MJPEG Stream über UDP an und nutzt eine moderne Kivy-Oberfläche, die sich besonders für Android im Hochformat eignet. Zusätzlich steht ein integrierter Webserver bereit. Neben dem reinen Anzeigen können verschiedene Bildoperationen angewendet und Aufnahmen erstellt werden.
 
 ## Funktionen
@@ -19,7 +20,7 @@ Alle Änderungen werden sofort angewendet und in `settings.json` gespeichert.
 
 ### Steuerbuttons
 
-- **Aufnahme**: Startet bzw. beendet die Videoaufnahme im MP4-Format.
+ - **Aufnahme**: Startet bzw. beendet die Videoaufnahme und speichert als MPEG-Datei.
 - **Snapshot**: Speichert das aktuelle Bild als JPEG.
 - **Debug**: Schaltet eine Protokollierung ein oder aus.
 - **Restart**: Startet den Stream manuell neu.
@@ -33,6 +34,16 @@ Alle Änderungen werden sofort angewendet und in `settings.json` gespeichert.
 Parallel zur Desktop-GUI startet automatisch ein Webserver auf Port `5000`.
 Rufen Sie `http://<IP>:5000` im Browser auf, um die gleichen Bedienelemente per Web zu nutzen.
 Wenn keine Bilder empfangen werden, versucht die Anwendung den Stream erneut zu starten.
+
+## Installation
+
+Installiere zunächst die benötigten Python-Bibliotheken und **FFmpeg**:
+
+```bash
+pip install opencv-python pillow numpy flask kivy
+sudo apt install ffmpeg
+```
+
 
 ## Android-Build unter Windows 10
 
