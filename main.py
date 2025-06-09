@@ -352,6 +352,8 @@ class CameraLayout(BoxLayout):
                 str(VIDEO_FPS),
                 "-c:v",
                 "mpeg1video",
+                "-f",
+                "mpeg",
                 path,
             ]
             try:

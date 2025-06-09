@@ -1,6 +1,8 @@
 # China Cam Stream
 
 
+Die Anwendung richtet sich mit ihrer vertikalen Kivy-Oberfläche besonders an Android-Geräte.
+
 Dieses Programm zeigt einen MJPEG Stream über UDP an und nutzt eine moderne Kivy-Oberfläche, die sich besonders für Android im Hochformat eignet. Zusätzlich steht ein integrierter Webserver bereit. Neben dem reinen Anzeigen können verschiedene Bildoperationen angewendet und Aufnahmen erstellt werden.
 
 ## Funktionen
@@ -37,7 +39,10 @@ Wenn keine Bilder empfangen werden, versucht die Anwendung den Stream erneut zu 
 
 ## Installation
 
-Installiere zunächst die benötigten Python-Bibliotheken und **FFmpeg**:
+
+Führe zunächst die Installation der benötigten Bibliotheken aus,
+bevor du das Programm startest. Dazu gehören Python-Pakete und **FFmpeg**:
+
 
 ```bash
 pip install opencv-python pillow numpy flask kivy
