@@ -128,11 +128,15 @@ class CameraStreamer:
                         frame = buffer[: end_idx + 2]
                         try:
                             img = Image.open(io.BytesIO(frame))
-                            with self.lock:
-                                self.current_img = img
-                                self.last_frame_time = time.time()
+                            img = img.convert("RGB")
                         except Exception as e:
                             log(f"decode err {e}", self.debug)
+                            buffer = b""
+                            collecting = False
+                            continue
+                        with self.lock:
+                            self.current_img = img
+                            self.last_frame_time = time.time()
                         buffer = b""
                         collecting = False
             except Exception as ex:
@@ -140,7 +144,11 @@ class CameraStreamer:
 
     def get_image(self):
         with self.lock:
-            return self.current_img.copy()
+            try:
+                return self.current_img.copy()
+            except Exception:
+                # return black frame if current image is corrupted
+                return dummy_black_image()
 
     def alive(self, timeout=2.0):
         return time.time() - self.last_frame_time < timeout
