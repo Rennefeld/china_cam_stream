@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image, ImageEnhance, ImageOps
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.gridlayout import GridLayout
 from kivy.uix.image import Image as KivyImage
 from kivy.uix.button import Button
 from kivy.uix.filechooser import FileChooserIconView
@@ -34,6 +35,7 @@ STREAM_WIDTH = settings.width
 STREAM_HEIGHT = settings.height
 RESOLUTIONS = [(640, 480), (800, 600), (1280, 720), (1920, 1080)]
 LOGFILE = "debug_udp_streamer.log"
+VIDEO_CODEC = "mp4v"
 BRIGHTNESS = settings.brightness
 CONTRAST = settings.contrast
 SATURATION = settings.saturation
@@ -144,12 +146,12 @@ class CameraStreamer:
 
 class FileSavePopup(Popup):
     def __init__(self, title, default_name, callback, **kwargs):
-        super().__init__(title=title, size_hint=(0.9, 0.9), **kwargs)
+        super().__init__(title=title, size_hint=(0.8, 0.9), **kwargs)
         self.callback = callback
         layout = BoxLayout(orientation="vertical")
         self.fc = FileChooserIconView(path=os.getcwd(), dirselect=True, size_hint=(1, 0.8))
         layout.add_widget(self.fc)
-        self.name_input = TextInput(text=default_name, size_hint=(1, 0.1))
+        self.name_input = TextInput(text=default_name, multiline=False, size_hint=(1, 0.1))
         layout.add_widget(self.name_input)
         btn = Button(text="Save", size_hint=(1, 0.1))
         btn.bind(on_release=self.do_save)
@@ -165,31 +167,39 @@ class FileSavePopup(Popup):
 
 class ConfigPopup(Popup):
     def __init__(self, apply_callback, **kwargs):
-        super().__init__(title="Einstellungen", size_hint=(0.9, 0.9), **kwargs)
+        super().__init__(title="Einstellungen", size_hint=(0.8, 0.9), **kwargs)
         self.apply_callback = apply_callback
-        layout = BoxLayout(orientation="vertical")
-        self.ip_input = TextInput(text=str(CAM_IP), hint_text="IP", multiline=False, size_hint=(1, 0.1))
-        self.port_input = TextInput(text=str(CAM_PORT), hint_text="Port", multiline=False, size_hint=(1, 0.1))
-        self.bright_input = TextInput(text=str(BRIGHTNESS), hint_text="Brightness", multiline=False, size_hint=(1, 0.1))
-        self.contrast_input = TextInput(text=str(CONTRAST), hint_text="Contrast", multiline=False, size_hint=(1, 0.1))
-        self.sat_input = TextInput(text=str(SATURATION), hint_text="Saturation", multiline=False, size_hint=(1, 0.1))
-        self.res_spinner = Spinner(text=f"{STREAM_WIDTH}x{STREAM_HEIGHT}", values=[f"{w}x{h}" for w, h in RESOLUTIONS], size_hint=(1, 0.1))
-        for widget, label in [
-            (self.ip_input, "IP"),
-            (self.port_input, "Port"),
-            (self.bright_input, "Brightness"),
-            (self.contrast_input, "Contrast"),
-            (self.sat_input, "Saturation"),
-            (self.res_spinner, "Resolution"),
+        layout = GridLayout(
+            cols=2,
+            spacing=5,
+            row_force_default=True,
+            row_default_height=40,
+            size_hint=(1, 0.8),
+        )
+        self.ip_input = TextInput(text=str(CAM_IP), hint_text="IP", multiline=False)
+        self.port_input = TextInput(text=str(CAM_PORT), hint_text="Port", multiline=False)
+        self.bright_input = TextInput(text=str(BRIGHTNESS), hint_text="Brightness", multiline=False)
+        self.contrast_input = TextInput(text=str(CONTRAST), hint_text="Contrast", multiline=False)
+        self.sat_input = TextInput(text=str(SATURATION), hint_text="Saturation", multiline=False)
+        self.res_spinner = Spinner(text=f"{STREAM_WIDTH}x{STREAM_HEIGHT}", values=[f"{w}x{h}" for w, h in RESOLUTIONS])
+        for label, widget in [
+            ("IP", self.ip_input),
+            ("Port", self.port_input),
+            ("Brightness", self.bright_input),
+            ("Contrast", self.contrast_input),
+            ("Saturation", self.sat_input),
+            ("Resolution", self.res_spinner),
         ]:
-            row = BoxLayout(size_hint=(1, 0.1))
-            row.add_widget(Label(text=label, size_hint=(0.4, 1)))
-            row.add_widget(widget)
-            layout.add_widget(row)
-        btn = Button(text="Save", size_hint=(1, 0.1))
+            layout.add_widget(Label(text=label))
+            layout.add_widget(widget)
+        btn_box = BoxLayout(size_hint=(1, 0.2))
+        btn = Button(text="Save")
         btn.bind(on_release=self.do_save)
-        layout.add_widget(btn)
-        self.add_widget(layout)
+        btn_box.add_widget(btn)
+        container = BoxLayout(orientation="vertical")
+        container.add_widget(layout)
+        container.add_widget(btn_box)
+        self.add_widget(container)
 
     def do_save(self, *_):
         w, h = map(int, self.res_spinner.text.split("x"))
@@ -302,8 +312,8 @@ class CameraLayout(BoxLayout):
 
     def toggle_record(self, *_):
         if not self.video_writer:
-            self.record_temp = os.path.join(os.getcwd(), "record_temp.mpg")
-            fourcc = cv2.VideoWriter_fourcc(*"PIM1")
+            self.record_temp = os.path.join(os.getcwd(), "record_temp.mp4")
+            fourcc = cv2.VideoWriter_fourcc(*VIDEO_CODEC)
             self.video_writer = cv2.VideoWriter(self.record_temp, fourcc, 10, (STREAM_WIDTH, STREAM_HEIGHT))
             self.record_btn.text = "Stop Recording"
             self.start_blink()
@@ -312,7 +322,7 @@ class CameraLayout(BoxLayout):
             self.stop_blink()
             self.video_writer.release()
             self.video_writer = None
-            name = time.strftime("%Y%m%d_%H%M%S_h4r1_cam_streamer.mpg")
+            name = time.strftime("%Y%m%d_%H%M%S_h4r1_cam_streamer.mp4")
             FileSavePopup("Save video", name, self.save_video).open()
 
     def save_video(self, path):
@@ -401,6 +411,7 @@ class CameraLayout(BoxLayout):
 
 class CameraApp(App):
     def build(self):
+        self.title = "H4R1 Cam Streamer"
         self.streamer = CameraStreamer()
         self.streamer.start()
         self.web = WebServer(self)

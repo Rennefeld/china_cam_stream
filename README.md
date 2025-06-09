@@ -7,7 +7,7 @@ Dieses Programm zeigt einen MJPEG Stream über UDP an und nutzt eine moderne Kiv
 - **MJPEG Anzeige** aus einem UDP Stream
 - **Konfigurationsmenü** für Kamera-IP, Kamera-Port, Helligkeit, Kontrast und Sättigung
 - **Bildoperationen**: Drehung in 90°-Schritten, horizontales/vertikales Spiegeln, Schwarz/Weiß
-- **Snapshot und Videoaufnahme**
+- **Snapshot und Videoaufnahme** mit individuellem Speicherort
 - **Individuelle Dateinamen** beim Speichern von Videos und Bildern
 - **Weboberfläche** mit denselben Funktionen
 
@@ -19,9 +19,10 @@ Alle Änderungen werden sofort angewendet und in `settings.json` gespeichert.
 
 ### Steuerbuttons
 
-- **Aufnahme**: Startet bzw. beendet die Videoaufnahme im MPEG-Format.
+- **Aufnahme**: Startet bzw. beendet die Videoaufnahme im MP4-Format.
 - **Snapshot**: Speichert das aktuelle Bild als JPEG.
 - **Debug**: Schaltet eine Protokollierung ein oder aus.
+- **Restart**: Startet den Stream manuell neu.
 - **Rotate**: Rotiert das Bild um 90°.
 - **Flip H/V**: Spiegelt das Bild horizontal bzw. vertikal.
 - **B/W**: Schaltet zwischen Farbe und Graustufen um.
@@ -31,7 +32,7 @@ Alle Änderungen werden sofort angewendet und in `settings.json` gespeichert.
 
 Parallel zur Desktop-GUI startet automatisch ein Webserver auf Port `5000`.
 Rufen Sie `http://<IP>:5000` im Browser auf, um die gleichen Bedienelemente per Web zu nutzen.
-Wenn keine Bilder empfangen werden, startet die Anwendung den Stream automatisch neu.
+Wenn keine Bilder empfangen werden, versucht die Anwendung den Stream erneut zu starten.
 
 ## Android-Build unter Windows 10
 
