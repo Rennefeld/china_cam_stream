@@ -20,8 +20,8 @@ from kivy.uix.spinner import Spinner
 from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 from kivy.clock import Clock
-from kivy.graphics import Color, Ellipse
 from kivy.core.image import Image as CoreImage
+from kivy.graphics import Color, Ellipse
 
 from settings import Settings
 
@@ -149,26 +149,6 @@ class CameraStreamer:
     def alive(self, timeout: float = 2.0) -> bool:
         return time.time() - self.last_frame_time < timeout
 
-class FileSavePopup(Popup):
-    def __init__(self, title: str, default_name: str, callback, **kwargs) -> None:
-        super().__init__(title=title, size_hint=(0.9, 0.9), **kwargs)
-        self.callback = callback
-        layout = BoxLayout(orientation="vertical")
-        self.fc = FileChooserIconView(path=os.getcwd(), dirselect=True, size_hint=(1, 0.8))
-        layout.add_widget(self.fc)
-        self.name_input = TextInput(text=default_name, multiline=False, size_hint=(1, 0.1))
-        layout.add_widget(self.name_input)
-        btn = Button(text="Save", size_hint=(1, 0.1))
-        btn.bind(on_release=self.do_save)
-        layout.add_widget(btn)
-        self.add_widget(layout)
-
-    def do_save(self, *_args) -> None:
-        if self.fc.path:
-            dest = os.path.join(self.fc.path, self.name_input.text)
-            self.callback(dest)
-            self.dismiss()
-
 class ConfigPopup(Popup):
     def __init__(self, apply_cb, **kwargs) -> None:
         super().__init__(title="Settings", size_hint=(0.9, 0.9), **kwargs)
@@ -258,9 +238,7 @@ class CameraLayout(BoxLayout):
         Clock.schedule_interval(self.check_stream, 2)
         self.blink_state = False
 
-    def show_config(self, *_args) -> None:
-        ConfigPopup(self.apply_settings).open()
-
+    # Apply new settings from ConfigPopup
     def apply_settings(
         self,
         cam_ip: str,
@@ -285,22 +263,32 @@ class CameraLayout(BoxLayout):
         settings.save()
         self.streamer.restart()
 
+    # Show config settings (for the config button)
+    def show_config(self, *_args) -> None:
+        ConfigPopup(self.apply_settings).open()
+
+    # Toggle logging enabled/disabled (for the log button)
     def toggle_log(self, *_args) -> None:
         logger.disabled = not logger.disabled
         self.log_btn.text = "Disable Log" if not logger.disabled else "Enable Log"
 
+    # Rotate the image by 90 degrees
     def rotate(self) -> None:
         self.rotate_angle = (self.rotate_angle + 90) % 360
 
+    # Flip the image horizontally
     def flip_horizontal(self) -> None:
         self.flip_h = not self.flip_h
 
+    # Flip the image vertically
     def flip_vertical(self) -> None:
         self.flip_v = not self.flip_v
 
+    # Toggle grayscale for the image
     def toggle_gray(self) -> None:
         self.gray = not self.gray
 
+    # Get the processed image with applied transformations
     def get_processed_image(self) -> Image.Image:
         img = self.streamer.get_image()
         if self.flip_h:
@@ -320,6 +308,7 @@ class CameraLayout(BoxLayout):
             img = ImageEnhance.Color(img).enhance(SATURATION)
         return img
 
+    # Start or stop recording based on the state
     def toggle_record(self, *_args) -> None:
         if not self.recording:
             fname = time.strftime("%Y%m%d_%H%M%S_h4r1_cam_recording.avi")
@@ -339,6 +328,7 @@ class CameraLayout(BoxLayout):
             if self.record_temp:
                 FileSavePopup("Save video", os.path.basename(self.record_temp), self.save_video).open()
 
+    # Save the recorded video to a specific path
     def save_video(self, path: str) -> None:
         if self.record_temp and os.path.exists(self.record_temp):
             try:
@@ -349,10 +339,12 @@ class CameraLayout(BoxLayout):
             finally:
                 self.record_temp = None
 
+    # Take a snapshot of the current frame
     def snapshot(self, *_args) -> None:
         name = time.strftime("%Y%m%d_%H%M%S_h4r1_cam_streamer.jpg")
         FileSavePopup("Save snapshot", name, self.save_snapshot).open()
 
+    # Save the snapshot to a specific path
     def save_snapshot(self, path: str) -> None:
         img = self.get_processed_image()
         try:
@@ -361,6 +353,7 @@ class CameraLayout(BoxLayout):
         except Exception as e:
             log(f"Could not save snapshot: {e}")
 
+    # Update the image at regular intervals
     def update_image(self, *_args) -> None:
         img = self.get_processed_image()
         data = io.BytesIO()
@@ -370,23 +363,33 @@ class CameraLayout(BoxLayout):
         if self.recording and self.video_writer:
             frame = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
             self.video_writer.write(frame)
-        self._draw_rec_indicator()
 
-    def _draw_rec_indicator(self) -> None:
-        self.image_widget.canvas.after.clear()
-        if self.recording:
-            with self.image_widget.canvas.after:
-                self.blink_state = not self.blink_state
-                if self.blink_state:
-                    Color(1, 0, 0)
-                else:
-                    Color(1, 0, 0, 0.2)
-                Ellipse(pos=(10, self.image_widget.height - 20), size=(10, 10))
-
+    # Check the stream status and restart if needed
     def check_stream(self, *_args) -> None:
         if not self.streamer.alive():
             log("stream stalled, restarting")
             self.streamer.restart()
+
+class FileSavePopup(Popup):
+    def __init__(self, title: str, default_name: str, callback, **kwargs) -> None:
+        super().__init__(title=title, size_hint=(0.9, 0.9), **kwargs)
+        self.callback = callback
+        layout = BoxLayout(orientation="vertical")
+        self.fc = FileChooserIconView(path=os.getcwd(), dirselect=True, size_hint=(1, 0.8))
+        layout.add_widget(self.fc)
+        self.name_input = TextInput(text=default_name, multiline=False, size_hint=(1, 0.1))
+        layout.add_widget(self.name_input)
+        btn = Button(text="Save", size_hint=(1, 0.1))
+        btn.bind(on_release=self.do_save)
+        layout.add_widget(btn)
+        self.add_widget(layout)
+
+    def do_save(self, *_args) -> None:
+        if self.fc.path:
+            dest = os.path.join(self.fc.path, self.name_input.text)
+            self.callback(dest)
+            self.dismiss()
+
 
 class CameraApp(App):
     def build(self):
