@@ -333,16 +333,20 @@ class CameraLayout(BoxLayout):
             self.stop_blink()
             self.video_writer.release()
             self.video_writer = None
-            name = time.strftime("%Y%m%d_%H%M%S_h4r1_cam_streamer.mpg")
+            name = time.strftime("%Y%m%d_%H%M%S_h4r1_cam_streamer.mp4")
             FileSavePopup("Save video", name, self.save_video).open()
 
     def save_video(self, path):
         if self.record_temp and os.path.exists(self.record_temp):
             if not FFMPEG:
-                Popup(title="FFmpeg fehlt",
-                      content=Label(text="Bitte ffmpeg installieren"),
-                      size_hint=(0.6, 0.3)).open()
-                os.replace(self.record_temp, path)
+                Popup(
+                    title="FFmpeg fehlt",
+                    content=Label(text="Bitte ffmpeg installieren"),
+                    size_hint=(0.6, 0.3),
+                ).open()
+                base, _ = os.path.splitext(path)
+                avi_path = base + ".avi"
+                os.replace(self.record_temp, avi_path)
                 log("ffmpeg not found; saved AVI", self.debug_mode)
                 return
             cmd = [
@@ -353,9 +357,11 @@ class CameraLayout(BoxLayout):
                 "-r",
                 str(VIDEO_FPS),
                 "-c:v",
-                "mpeg1video",
-                "-f",
-                "mpeg",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "faststart",
                 path,
             ]
             try:
