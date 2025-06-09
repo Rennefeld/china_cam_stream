@@ -146,18 +146,19 @@ class FileSavePopup(Popup):
     def __init__(self, title, default_name, callback, **kwargs):
         super().__init__(title=title, size_hint=(0.9, 0.9), **kwargs)
         self.callback = callback
-        self.default_name = default_name
         layout = BoxLayout(orientation="vertical")
-        self.fc = FileChooserIconView(path=os.getcwd(), dirselect=True, size_hint=(1, 0.9))
+        self.fc = FileChooserIconView(path=os.getcwd(), dirselect=True, size_hint=(1, 0.8))
         layout.add_widget(self.fc)
-        btn = Button(text="Save Here", size_hint=(1, 0.1))
+        self.name_input = TextInput(text=default_name, size_hint=(1, 0.1))
+        layout.add_widget(self.name_input)
+        btn = Button(text="Save", size_hint=(1, 0.1))
         btn.bind(on_release=self.do_save)
         layout.add_widget(btn)
         self.add_widget(layout)
 
     def do_save(self, *_):
         if self.fc.path:
-            dest = os.path.join(self.fc.path, self.default_name)
+            dest = os.path.join(self.fc.path, self.name_input.text)
             self.callback(dest)
             self.dismiss()
 
@@ -167,11 +168,11 @@ class ConfigPopup(Popup):
         super().__init__(title="Einstellungen", size_hint=(0.9, 0.9), **kwargs)
         self.apply_callback = apply_callback
         layout = BoxLayout(orientation="vertical")
-        self.ip_input = TextInput(text=str(CAM_IP), size_hint=(1, 0.1))
-        self.port_input = TextInput(text=str(CAM_PORT), size_hint=(1, 0.1))
-        self.bright_input = TextInput(text=str(BRIGHTNESS), size_hint=(1, 0.1))
-        self.contrast_input = TextInput(text=str(CONTRAST), size_hint=(1, 0.1))
-        self.sat_input = TextInput(text=str(SATURATION), size_hint=(1, 0.1))
+        self.ip_input = TextInput(text=str(CAM_IP), hint_text="IP", multiline=False, size_hint=(1, 0.1))
+        self.port_input = TextInput(text=str(CAM_PORT), hint_text="Port", multiline=False, size_hint=(1, 0.1))
+        self.bright_input = TextInput(text=str(BRIGHTNESS), hint_text="Brightness", multiline=False, size_hint=(1, 0.1))
+        self.contrast_input = TextInput(text=str(CONTRAST), hint_text="Contrast", multiline=False, size_hint=(1, 0.1))
+        self.sat_input = TextInput(text=str(SATURATION), hint_text="Saturation", multiline=False, size_hint=(1, 0.1))
         self.res_spinner = Spinner(text=f"{STREAM_WIDTH}x{STREAM_HEIGHT}", values=[f"{w}x{h}" for w, h in RESOLUTIONS], size_hint=(1, 0.1))
         for widget, label in [
             (self.ip_input, "IP"),
@@ -302,7 +303,7 @@ class CameraLayout(BoxLayout):
     def toggle_record(self, *_):
         if not self.video_writer:
             self.record_temp = os.path.join(os.getcwd(), "record_temp.mpg")
-            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            fourcc = cv2.VideoWriter_fourcc(*"PIM1")
             self.video_writer = cv2.VideoWriter(self.record_temp, fourcc, 10, (STREAM_WIDTH, STREAM_HEIGHT))
             self.record_btn.text = "Stop Recording"
             self.start_blink()
