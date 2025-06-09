@@ -37,7 +37,8 @@ STREAM_WIDTH = settings.width
 STREAM_HEIGHT = settings.height
 RESOLUTIONS = [(640, 480), (800, 600), (1280, 720), (1920, 1080)]
 LOGFILE = "debug_udp_streamer.log"
-VIDEO_CODEC = "mp4v"
+# Use Motion JPEG for broad compatibility
+VIDEO_CODEC = "MJPG"
 VIDEO_FPS = 30
 FFMPEG = shutil.which("ffmpeg")
 BRIGHTNESS = settings.brightness
@@ -316,7 +317,8 @@ class CameraLayout(BoxLayout):
 
     def toggle_record(self, *_):
         if not self.video_writer:
-            self.record_temp = os.path.join(os.getcwd(), "record_temp.mp4")
+            # temporary AVI written with MJPG for reliable output
+            self.record_temp = os.path.join(os.getcwd(), "record_temp.avi")
             fourcc = cv2.VideoWriter_fourcc(*VIDEO_CODEC)
             self.video_writer = cv2.VideoWriter(
                 self.record_temp,
@@ -341,7 +343,7 @@ class CameraLayout(BoxLayout):
                       content=Label(text="Bitte ffmpeg installieren"),
                       size_hint=(0.6, 0.3)).open()
                 os.replace(self.record_temp, path)
-                log("ffmpeg not found; saved mp4", self.debug_mode)
+                log("ffmpeg not found; saved AVI", self.debug_mode)
                 return
             cmd = [
                 FFMPEG,
