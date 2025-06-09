@@ -5,6 +5,7 @@ import socket
 import threading
 import logging
 import subprocess
+import shutil
 
 
 import cv2
@@ -38,6 +39,7 @@ RESOLUTIONS = [(640, 480), (800, 600), (1280, 720), (1920, 1080)]
 LOGFILE = "debug_udp_streamer.log"
 VIDEO_CODEC = "mp4v"
 VIDEO_FPS = 30
+FFMPEG = shutil.which("ffmpeg")
 BRIGHTNESS = settings.brightness
 CONTRAST = settings.contrast
 SATURATION = settings.saturation
@@ -334,8 +336,15 @@ class CameraLayout(BoxLayout):
 
     def save_video(self, path):
         if self.record_temp and os.path.exists(self.record_temp):
+            if not FFMPEG:
+                Popup(title="FFmpeg fehlt",
+                      content=Label(text="Bitte ffmpeg installieren"),
+                      size_hint=(0.6, 0.3)).open()
+                os.replace(self.record_temp, path)
+                log("ffmpeg not found; saved mp4", self.debug_mode)
+                return
             cmd = [
-                "ffmpeg",
+                FFMPEG,
                 "-y",
                 "-i",
                 self.record_temp,

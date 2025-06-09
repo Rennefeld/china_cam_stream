@@ -43,6 +43,9 @@ Installiere zunächst die benötigten Python-Bibliotheken und **FFmpeg**:
 pip install opencv-python pillow numpy flask kivy
 sudo apt install ffmpeg
 ```
+FFmpeg wird zum Konvertieren aufgezeichneter Videos in das MPEG-Format
+benötigt. Ist es nicht installiert, speichert die Anwendung lediglich eine MP4
+Datei ab.
 
 
 ## Android-Build unter Windows 10
