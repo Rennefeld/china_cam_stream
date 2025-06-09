@@ -266,6 +266,7 @@ class CameraLayout(BoxLayout):
 
         self.video_writer = None
         self.record_temp = None
+        self.recording = False
         self.blink_event = None
         Clock.schedule_interval(self.update_image, 1/10)
         Clock.schedule_interval(self.check_stream, 2)
@@ -313,8 +314,11 @@ class CameraLayout(BoxLayout):
         self.streamer.restart()
 
     def toggle_record(self, *_):
-        if not self.video_writer:
-            self.record_temp = os.path.join(os.getcwd(), "record_temp.avi")
+        if not self.recording:
+            self.record_temp = os.path.join(
+                os.getcwd(),
+                time.strftime("%Y%m%d_%H%M%S_h4r1_cam_recording.avi"),
+            )
             fourcc = cv2.VideoWriter_fourcc(*VIDEO_CODEC)
             self.video_writer = cv2.VideoWriter(
                 self.record_temp,
@@ -322,60 +326,27 @@ class CameraLayout(BoxLayout):
                 VIDEO_FPS,
                 (STREAM_WIDTH, STREAM_HEIGHT),
             )
+            self.recording = True
             self.record_btn.text = "Stop Recording"
             self.start_blink()
+            log(f"Recording started: {self.record_temp}", self.debug_mode)
         else:
+            self.recording = False
             self.record_btn.text = "Start Recording"
             self.stop_blink()
-            self.video_writer.release()
+            if self.video_writer:
+                self.video_writer.release()
             self.video_writer = None
-            name = time.strftime("%Y%m%d_%H%M%S_h4r1_cam_streamer.avi")
-            FileSavePopup("Save video", name, self.save_video).open()
+            log(f"Recording stopped. Saved as: {self.record_temp}", self.debug_mode)
+            FileSavePopup(
+                "Save video", os.path.basename(self.record_temp), self.save_video
+            ).open()
 
     def save_video(self, path):
         if self.record_temp and os.path.exists(self.record_temp):
-            if not FFMPEG:
-                Popup(
-                    title="FFmpeg fehlt",
-                    content=Label(text="Bitte ffmpeg installieren"),
-                    size_hint=(0.6, 0.3),
-                ).open()
-                base, _ = os.path.splitext(path)
-                avi_path = base + ".avi"
-                os.replace(self.record_temp, avi_path)
-                log("ffmpeg not found; saved AVI", self.debug_mode)
-                return
-            cmd = [
-                FFMPEG,
-                "-y",
-                "-i",
-                self.record_temp,
-                "-r",
-                str(VIDEO_FPS),
-                "-c:v",
-                "libx264",
-                "-pix_fmt",
-                "yuv420p",
-                "-movflags",
-                "faststart",
-                "-f",
-                "mp4",
-                path,
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                Popup(
-                    title="FFmpeg Fehler",
-                    content=Label(text=result.stderr or "Konvertierung fehlgeschlagen"),
-                    size_hint=(0.6, 0.3),
-                ).open()
-                base, _ = os.path.splitext(path)
-                avi_path = base + ".avi"
-                os.replace(self.record_temp, avi_path)
-                log("ffmpeg failed; saved AVI", self.debug_mode)
-                return
-            os.remove(self.record_temp)
+            os.replace(self.record_temp, path)
             log(f"video saved to {path}", self.debug_mode)
+            self.record_temp = None
 
     def snapshot(self, *_):
         name = time.strftime("%Y%m%d_%H%M%S_h4r1_cam_streamer.jpg")
