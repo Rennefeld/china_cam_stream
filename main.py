@@ -362,14 +362,23 @@ class CameraLayout(BoxLayout):
                 "yuv420p",
                 "-movflags",
                 "faststart",
+                "-f",
+                "mp4",
                 path,
             ]
-            try:
-                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-                os.remove(self.record_temp)
-            except Exception as e:
-                log(f"ffmpeg conversion failed {e}", self.debug_mode)
-                os.replace(self.record_temp, path)
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                Popup(
+                    title="FFmpeg Fehler",
+                    content=Label(text=result.stderr or "Konvertierung fehlgeschlagen"),
+                    size_hint=(0.6, 0.3),
+                ).open()
+                base, _ = os.path.splitext(path)
+                avi_path = base + ".avi"
+                os.replace(self.record_temp, avi_path)
+                log("ffmpeg failed; saved AVI", self.debug_mode)
+                return
+            os.remove(self.record_temp)
             log(f"video saved to {path}", self.debug_mode)
 
     def snapshot(self, *_):

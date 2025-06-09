@@ -1,5 +1,6 @@
 # China Cam Stream
 
+
 Die Anwendung richtet sich mit ihrer vertikalen Kivy-Oberfläche besonders an Android-Geräte.
 
 Dieses Programm zeigt einen MJPEG Stream über UDP an und nutzt eine moderne Kivy-Oberfläche, die sich besonders für Android im Hochformat eignet. Zusätzlich steht ein integrierter Webserver bereit. Neben dem reinen Anzeigen können verschiedene Bildoperationen angewendet und Aufnahmen erstellt werden.
@@ -46,8 +47,8 @@ pip install opencv-python pillow numpy flask kivy
 sudo apt install ffmpeg
 ```
 FFmpeg wird zum Konvertieren aufgezeichneter Videos in das MP4-Format
-verwendet. Ist es nicht installiert, speichert die Anwendung die Aufnahme
-als AVI-Datei.
+verwendet. Ist es nicht installiert oder die Umwandlung schlägt fehl,
+behält die Anwendung die temporäre AVI-Datei bei.
 
 
 ## Android-Build unter Windows 10
