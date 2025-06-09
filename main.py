@@ -199,7 +199,10 @@ class MJPEGNetworkGuiDemo:
         self.gray = not self.gray
 
     def get_processed_image(self):
-        img = self.current_img.copy()
+        try:
+            img = self.current_img.copy()
+        except Exception:
+            img = dummy_black_image()
         if self.flip_h:
             img = ImageOps.mirror(img)
         if self.flip_v:
@@ -254,18 +257,23 @@ class MJPEGNetworkGuiDemo:
 
                 # Option 1: JPEG-Ende suchen
                 if collecting and b'\xff\xd9' in payload:
-                    # bis inkl. FF D9 übernehmen
                     end_idx = buffer.find(b'\xff\xd9')
                     if end_idx != -1:
-                        frame = buffer[:end_idx+2]
-                        log(f"Pkt {pkt_counter}: JPEG vollständig (bis FF D9), Größe {len(frame)} Bytes. Versuche anzuzeigen…")
+                        frame = buffer[:end_idx + 2]
+                        log(
+                            f"Pkt {pkt_counter}: JPEG vollständig (bis FF D9), Größe {len(frame)} Bytes. Versuche anzuzeigen…"
+                        )
                         try:
                             img = Image.open(io.BytesIO(frame))
-                            self.current_img = img
-                            self.root.after(0, self.draw_image, self.current_img)
-                            log(f"Pkt {pkt_counter}: Bild angezeigt!")
+                            img = img.convert("RGB")
                         except Exception as e:
                             log(f"Pkt {pkt_counter}: JPEG Decode fehlgeschlagen: {e}")
+                            buffer = b""
+                            collecting = False
+                            continue
+                        self.current_img = img
+                        self.root.after(0, self.draw_image, self.current_img)
+                        log(f"Pkt {pkt_counter}: Bild angezeigt!")
                         buffer = b""
                         collecting = False
 
