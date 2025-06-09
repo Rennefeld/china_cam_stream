@@ -4,8 +4,6 @@ import time
 import socket
 import threading
 import logging
-import subprocess
-import shutil
 
 
 import cv2
@@ -37,10 +35,9 @@ STREAM_WIDTH = settings.width
 STREAM_HEIGHT = settings.height
 RESOLUTIONS = [(640, 480), (800, 600), (1280, 720), (1920, 1080)]
 LOGFILE = "debug_udp_streamer.log"
-# Use Motion JPEG for broad compatibility
-VIDEO_CODEC = "MJPG"
+# Use XVID for reliable AVI recording
+VIDEO_CODEC = "XVID"
 VIDEO_FPS = 30
-FFMPEG = shutil.which("ffmpeg")
 BRIGHTNESS = settings.brightness
 CONTRAST = settings.contrast
 SATURATION = settings.saturation
@@ -317,7 +314,6 @@ class CameraLayout(BoxLayout):
 
     def toggle_record(self, *_):
         if not self.video_writer:
-            # temporary AVI written with MJPG for reliable output
             self.record_temp = os.path.join(os.getcwd(), "record_temp.avi")
             fourcc = cv2.VideoWriter_fourcc(*VIDEO_CODEC)
             self.video_writer = cv2.VideoWriter(
@@ -333,7 +329,7 @@ class CameraLayout(BoxLayout):
             self.stop_blink()
             self.video_writer.release()
             self.video_writer = None
-            name = time.strftime("%Y%m%d_%H%M%S_h4r1_cam_streamer.mp4")
+            name = time.strftime("%Y%m%d_%H%M%S_h4r1_cam_streamer.avi")
             FileSavePopup("Save video", name, self.save_video).open()
 
     def save_video(self, path):
