@@ -1,190 +1,344 @@
+import os
+import io
+import time
 import socket
 import threading
-import time
-from tkinter import (
-    Tk,
-    Canvas,
-    NW,
-    Button,
-    Menu,
-    Toplevel,
-    Label,
-    Entry,
-    Scale,
-    HORIZONTAL,
-    Frame,
-)
-from PIL import Image, ImageTk, ImageEnhance, ImageOps
-import io
-import binascii
-import json
-import os
+import logging
+
+
 import cv2
 import numpy as np
+from PIL import Image, ImageEnhance, ImageOps
+from kivy.app import App
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.gridlayout import GridLayout
+from kivy.uix.image import Image as KivyImage
+from kivy.uix.button import Button
+from kivy.uix.filechooser import FileChooserIconView
+from kivy.uix.popup import Popup
+from kivy.uix.spinner import Spinner
+from kivy.uix.label import Label
+from kivy.uix.textinput import TextInput
+from kivy.clock import Clock
+from kivy.graphics import Color, Ellipse
+from kivy.core.image import Image as CoreImage
+
 from settings import Settings
 from webserver import WebServer
 
 settings = Settings.load()
 CAM_IP = settings.cam_ip
 CAM_PORT = settings.cam_port
-LOCAL_PORT = 0  # Ephemeral
 KEEPALIVE_PORTS = [8070, 8080]
 KEEPALIVE_PAYLOADS = {8070: b"0f", 8080: b"Bv"}
-STREAM_WIDTH = 640
-STREAM_HEIGHT = 480
+STREAM_WIDTH = settings.width
+STREAM_HEIGHT = settings.height
+RESOLUTIONS = [(640, 480), (800, 600), (1280, 720), (1920, 1080)]
 LOGFILE = "debug_udp_streamer.log"
+VIDEO_CODEC = "mp4v"
 BRIGHTNESS = settings.brightness
 CONTRAST = settings.contrast
 SATURATION = settings.saturation
 
-def log(msg):
-    print(msg)
-    with open(LOGFILE, "a", encoding="utf-8") as f:
-        f.write(f"{time.strftime('%H:%M:%S')} {msg}\n")
-
-def keepalive_loop(sock, flag, local_port):
-    while flag["running"]:
-        for port in KEEPALIVE_PORTS:
-            try:
-                sock.sendto(KEEPALIVE_PAYLOADS[port], (CAM_IP, port))
-                log(f"[Keepalive] gesendet: {KEEPALIVE_PAYLOADS[port]} an {CAM_IP}:{port} von local port {local_port}")
-            except Exception as e:
-                log(f"[Keepalive] Fehler an {port}: {e}")
-        time.sleep(1)
 
 def dummy_black_image():
     return Image.new("RGB", (STREAM_WIDTH, STREAM_HEIGHT), "black")
 
 
-def save_settings():
-    settings.cam_ip = CAM_IP
-    settings.cam_port = CAM_PORT
-    settings.brightness = BRIGHTNESS
-    settings.contrast = CONTRAST
-    settings.saturation = SATURATION
-    settings.save()
+logger = logging.getLogger("cam")
+logger.setLevel(logging.DEBUG)
+_handler = logging.FileHandler(LOGFILE, encoding="utf-8")
+_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+logger.addHandler(_handler)
 
-class MJPEGNetworkGuiDemo:
-    def __init__(self):
-        self.root = Tk()
-        self.root.title("UDP Debug MJPEG Streamer")
-        self.canvas = Canvas(self.root, width=STREAM_WIDTH, height=STREAM_HEIGHT, bg="black")
-        self.canvas.pack()
-        self.controls = Frame(self.root)
-        self.controls.pack()
-        self._build_menu()
-        self._build_controls()
+def log(msg, debug):
+    if debug:
+        logger.debug(msg)
+
+
+class CameraStreamer:
+    def __init__(self, debug=False):
+        self.debug = debug
+        self.sock = None
+        self.keepalive_flag = {"running": False}
+        self.running = False
+        self.local_port = None
+        self.current_img = dummy_black_image()
+        self.last_frame_time = 0
+        self.lock = threading.Lock()
+
+    def start(self):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.bind(('', 0))
+        self.local_port = self.sock.getsockname()[1]
+        log(f"[Streamer] listening on UDP {self.local_port}", self.debug)
+        self.running = True
+        self.keepalive_flag["running"] = True
+        threading.Thread(target=self.keepalive_loop, daemon=True).start()
+        threading.Thread(target=self.stream_loop, daemon=True).start()
+
+    def stop(self):
+        self.running = False
+        self.keepalive_flag["running"] = False
+        if self.sock:
+            try:
+                self.sock.close()
+            except Exception:
+                pass
+            self.sock = None
+        log("[Streamer] stopped", self.debug)
+
+    def restart(self):
+        self.stop()
+        self.current_img = dummy_black_image()
+        self.start()
+
+    def keepalive_loop(self):
+        while self.keepalive_flag["running"]:
+            for port in KEEPALIVE_PORTS:
+                try:
+                    self.sock.sendto(KEEPALIVE_PAYLOADS[port], (CAM_IP, port))
+                    log(f"[KA] {KEEPALIVE_PAYLOADS[port]} -> {CAM_IP}:{port}", self.debug)
+                except Exception as e:
+                    log(f"[KA] error {e}", self.debug)
+            time.sleep(1)
+
+    def stream_loop(self):
+        buffer = b""
+        collecting = False
+        pkt_counter = 0
+        while self.running:
+            try:
+                data, _ = self.sock.recvfrom(65536)
+                pkt_counter += 1
+                if len(data) < 8:
+                    log(f"pkt {pkt_counter} short", self.debug)
+                    continue
+                payload = data[8:]
+                if payload.startswith(b"\xff\xd8"):
+                    buffer = payload
+                    collecting = True
+                elif collecting:
+                    buffer += payload
+                if collecting and b"\xff\xd9" in payload:
+                    end_idx = buffer.find(b"\xff\xd9")
+                    if end_idx != -1:
+                        frame = buffer[: end_idx + 2]
+                        try:
+                            img = Image.open(io.BytesIO(frame))
+                            with self.lock:
+                                self.current_img = img
+                                self.last_frame_time = time.time()
+                        except Exception as e:
+                            log(f"decode err {e}", self.debug)
+                        buffer = b""
+                        collecting = False
+            except Exception as ex:
+                log(f"stream err {ex}", self.debug)
+
+    def get_image(self):
+        with self.lock:
+            return self.current_img.copy()
+
+    def alive(self, timeout=2.0):
+        return time.time() - self.last_frame_time < timeout
+
+
+class FileSavePopup(Popup):
+    def __init__(self, title, default_name, callback, **kwargs):
+        super().__init__(title=title, size_hint=(0.8, 0.9), **kwargs)
+        self.callback = callback
+        layout = BoxLayout(orientation="vertical")
+        self.fc = FileChooserIconView(path=os.getcwd(), dirselect=True, size_hint=(1, 0.8))
+        layout.add_widget(self.fc)
+        self.name_input = TextInput(text=default_name, multiline=False, size_hint=(1, 0.1))
+        layout.add_widget(self.name_input)
+        btn = Button(text="Save", size_hint=(1, 0.1))
+        btn.bind(on_release=self.do_save)
+        layout.add_widget(btn)
+        self.add_widget(layout)
+
+    def do_save(self, *_):
+        if self.fc.path:
+            dest = os.path.join(self.fc.path, self.name_input.text)
+            self.callback(dest)
+            self.dismiss()
+
+
+class ConfigPopup(Popup):
+    def __init__(self, apply_callback, **kwargs):
+        super().__init__(title="Einstellungen", size_hint=(0.8, 0.9), **kwargs)
+        self.apply_callback = apply_callback
+        layout = GridLayout(
+            cols=2,
+            spacing=5,
+            row_force_default=True,
+            row_default_height=40,
+            size_hint=(1, 0.8),
+        )
+        self.ip_input = TextInput(text=str(CAM_IP), hint_text="IP", multiline=False)
+        self.port_input = TextInput(text=str(CAM_PORT), hint_text="Port", multiline=False)
+        self.bright_input = TextInput(text=str(BRIGHTNESS), hint_text="Brightness", multiline=False)
+        self.contrast_input = TextInput(text=str(CONTRAST), hint_text="Contrast", multiline=False)
+        self.sat_input = TextInput(text=str(SATURATION), hint_text="Saturation", multiline=False)
+        self.res_spinner = Spinner(text=f"{STREAM_WIDTH}x{STREAM_HEIGHT}", values=[f"{w}x{h}" for w, h in RESOLUTIONS])
+        for label, widget in [
+            ("IP", self.ip_input),
+            ("Port", self.port_input),
+            ("Brightness", self.bright_input),
+            ("Contrast", self.contrast_input),
+            ("Saturation", self.sat_input),
+            ("Resolution", self.res_spinner),
+        ]:
+            layout.add_widget(Label(text=label))
+            layout.add_widget(widget)
+        btn_box = BoxLayout(size_hint=(1, 0.2))
+        btn = Button(text="Save")
+        btn.bind(on_release=self.do_save)
+        btn_box.add_widget(btn)
+        container = BoxLayout(orientation="vertical")
+        container.add_widget(layout)
+        container.add_widget(btn_box)
+        self.add_widget(container)
+
+    def do_save(self, *_):
+        w, h = map(int, self.res_spinner.text.split("x"))
+        self.apply_callback(
+            cam_ip=self.ip_input.text,
+            cam_port=int(self.port_input.text),
+            brightness=float(self.bright_input.text),
+            contrast=float(self.contrast_input.text),
+            saturation=float(self.sat_input.text),
+            width=w,
+            height=h,
+        )
+        self.dismiss()
+
+
+class CameraLayout(BoxLayout):
+    def __init__(self, streamer: CameraStreamer, **kwargs):
+        super().__init__(orientation='vertical', **kwargs)
+        self.streamer = streamer
+        self.debug_mode = False
+        self.image_widget = KivyImage(size_hint=(1, 0.9))
+        self.add_widget(self.image_widget)
+
         self.rotate_angle = 0
         self.flip_h = False
         self.flip_v = False
         self.gray = False
-        self.recording = False
+
+        row1 = BoxLayout(size_hint=(1, 0.1))
+        self.record_btn = Button(text="Start Recording")
+        self.record_btn.bind(on_release=self.toggle_record)
+        self.snap_btn = Button(text="Snapshot")
+        self.snap_btn.bind(on_release=self.snapshot)
+        self.restart_btn = Button(text="Restart")
+        self.restart_btn.bind(on_release=lambda *_: self.streamer.restart())
+        self.debug_btn = Button(text="Enable Debug")
+        self.debug_btn.bind(on_release=self.toggle_debug)
+        self.config_btn = Button(text="Config")
+        self.config_btn.bind(on_release=self.open_config)
+        row1.add_widget(self.record_btn)
+        row1.add_widget(self.snap_btn)
+        row1.add_widget(self.restart_btn)
+        row1.add_widget(self.debug_btn)
+        row1.add_widget(self.config_btn)
+
+        row2 = BoxLayout(size_hint=(1, 0.1))
+        self.rotate_btn = Button(text="Rotate")
+        self.rotate_btn.bind(on_release=lambda *_: self.rotate())
+        self.flip_h_btn = Button(text="Flip H")
+        self.flip_h_btn.bind(on_release=lambda *_: self.flip_horizontal())
+        self.flip_v_btn = Button(text="Flip V")
+        self.flip_v_btn.bind(on_release=lambda *_: self.flip_vertical())
+        self.gray_btn = Button(text="B/W")
+        self.gray_btn.bind(on_release=lambda *_: self.toggle_gray())
+        row2.add_widget(self.rotate_btn)
+        row2.add_widget(self.flip_h_btn)
+        row2.add_widget(self.flip_v_btn)
+        row2.add_widget(self.gray_btn)
+
+        self.add_widget(row1)
+        self.add_widget(row2)
+
         self.video_writer = None
-        self.tk_img = None
-        self.current_img = dummy_black_image()
-        self.draw_image(self.current_img)
-        self.running = True
+        self.record_temp = None
+        self.blink_event = None
+        Clock.schedule_interval(self.update_image, 1/10)
+        Clock.schedule_interval(self.check_stream, 2)
 
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.bind(('', LOCAL_PORT))
-        self.local_port = self.sock.getsockname()[1]
+    def toggle_debug(self, *_):
+        self.debug_mode = not self.debug_mode
+        self.debug_btn.text = "Disable Debug" if self.debug_mode else "Enable Debug"
+        self.streamer.debug = self.debug_mode
+        
+    def open_config(self, *_):
+        ConfigPopup(self.apply_config).open()
 
-        log(f"[Streamer] Höre auf UDP {self.local_port}… (Keepalive 8070+8080)")
-
-        self.ka_flag = {"running": True}
-        threading.Thread(target=keepalive_loop, args=(self.sock, self.ka_flag, self.local_port), daemon=True).start()
-        threading.Thread(target=self.stream_loop, daemon=True).start()
-
-        self.web = WebServer(self)
-        self.web.start()
-
-        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
-        self.root.mainloop()
-
-    def _build_menu(self):
-        menu_bar = Menu(self.root)
-        self.root.config(menu=menu_bar)
-        settings_menu = Menu(menu_bar, tearoff=0)
-        settings_menu.add_command(label="Einstellungen", command=self.show_settings_dialog)
-        menu_bar.add_cascade(label="Menü", menu=settings_menu)
-
-    def _build_controls(self):
-        Button(self.controls, text="Aufnahme", command=self.toggle_record).grid(row=0, column=0)
-        Button(self.controls, text="Snapshot", command=self.snapshot).grid(row=0, column=1)
-        Button(self.controls, text="Rotate", command=self.rotate).grid(row=0, column=2)
-        Button(self.controls, text="Flip H", command=self.flip_horizontal).grid(row=0, column=3)
-        Button(self.controls, text="Flip V", command=self.flip_vertical).grid(row=0, column=4)
-        Button(self.controls, text="B/W", command=self.toggle_gray).grid(row=0, column=5)
-
-    def show_settings_dialog(self):
-        dlg = Toplevel(self.root)
-        dlg.title("Einstellungen")
-        Label(dlg, text="Cam IP").grid(row=0, column=0)
-        ip_entry = Entry(dlg)
-        ip_entry.insert(0, CAM_IP)
-        ip_entry.grid(row=0, column=1)
-
-        Label(dlg, text="Cam Port").grid(row=1, column=0)
-        port_entry = Entry(dlg)
-        port_entry.insert(0, str(CAM_PORT))
-        port_entry.grid(row=1, column=1)
-
-        Label(dlg, text="Helligkeit").grid(row=2, column=0)
-        bright_scale = Scale(dlg, from_=0, to=2, resolution=0.1, orient=HORIZONTAL)
-        bright_scale.set(BRIGHTNESS)
-        bright_scale.grid(row=2, column=1)
-
-        Label(dlg, text="Kontrast").grid(row=3, column=0)
-        contrast_scale = Scale(dlg, from_=0, to=2, resolution=0.1, orient=HORIZONTAL)
-        contrast_scale.set(CONTRAST)
-        contrast_scale.grid(row=3, column=1)
-
-        Label(dlg, text="Sättigung").grid(row=4, column=0)
-        sat_scale = Scale(dlg, from_=0, to=2, resolution=0.1, orient=HORIZONTAL)
-        sat_scale.set(SATURATION)
-        sat_scale.grid(row=4, column=1)
-
-        def apply_and_close():
-            self.update_settings(
-                cam_ip=ip_entry.get(),
-                cam_port=int(port_entry.get()),
-                brightness=float(bright_scale.get()),
-                contrast=float(contrast_scale.get()),
-                saturation=float(sat_scale.get()),
-            )
-            dlg.destroy()
-
-        Button(dlg, text="Speichern", command=apply_and_close).grid(row=5, column=0, columnspan=2)
-
-    def update_settings(self, cam_ip=None, cam_port=None, brightness=None, contrast=None, saturation=None):
-        global CAM_IP, CAM_PORT, BRIGHTNESS, CONTRAST, SATURATION
+    def apply_config(
+        self,
+        cam_ip=None,
+        cam_port=None,
+        brightness=None,
+        contrast=None,
+        saturation=None,
+        width=None,
+        height=None,
+    ):
+        global CAM_IP, CAM_PORT, BRIGHTNESS, CONTRAST, SATURATION, STREAM_WIDTH, STREAM_HEIGHT
         if cam_ip is not None:
             CAM_IP = cam_ip
+            settings.cam_ip = cam_ip
         if cam_port is not None:
             CAM_PORT = cam_port
+            settings.cam_port = cam_port
         if brightness is not None:
             BRIGHTNESS = brightness
+            settings.brightness = brightness
         if contrast is not None:
             CONTRAST = contrast
+            settings.contrast = contrast
         if saturation is not None:
             SATURATION = saturation
-        save_settings()
+            settings.saturation = saturation
+        if width is not None and height is not None:
+            STREAM_WIDTH = width
+            STREAM_HEIGHT = height
+            settings.width = width
+            settings.height = height
+        settings.save()
+        self.streamer.restart()
 
-    def toggle_record(self):
-        if not self.recording:
-            fourcc = cv2.VideoWriter_fourcc(*"XVID")
-            fname = time.strftime("record_%Y%m%d_%H%M%S.avi")
-            self.video_writer = cv2.VideoWriter(fname, fourcc, 10, (STREAM_WIDTH, STREAM_HEIGHT))
-            self.recording = True
+    def toggle_record(self, *_):
+        if not self.video_writer:
+            self.record_temp = os.path.join(os.getcwd(), "record_temp.mp4")
+            fourcc = cv2.VideoWriter_fourcc(*VIDEO_CODEC)
+            self.video_writer = cv2.VideoWriter(self.record_temp, fourcc, 10, (STREAM_WIDTH, STREAM_HEIGHT))
+            self.record_btn.text = "Stop Recording"
+            self.start_blink()
         else:
-            self.recording = False
-            if self.video_writer:
-                self.video_writer.release()
-                self.video_writer = None
+            self.record_btn.text = "Start Recording"
+            self.stop_blink()
+            self.video_writer.release()
+            self.video_writer = None
+            name = time.strftime("%Y%m%d_%H%M%S_h4r1_cam_streamer.mp4")
+            FileSavePopup("Save video", name, self.save_video).open()
 
-    def snapshot(self):
-        fname = time.strftime("snapshot_%Y%m%d_%H%M%S.jpg")
-        self.get_processed_image().save(fname)
+    def save_video(self, path):
+        if self.record_temp and os.path.exists(self.record_temp):
+            os.replace(self.record_temp, path)
+            log(f"video saved to {path}", self.debug_mode)
+
+    def snapshot(self, *_):
+        name = time.strftime("%Y%m%d_%H%M%S_h4r1_cam_streamer.jpg")
+        FileSavePopup("Save snapshot", name, self.save_snapshot).open()
+
+    def save_snapshot(self, path):
+        img = self.streamer.get_image()
+        img = self.process_image(img)
+        img.save(path)
+        log(f"snapshot saved to {path}", self.debug_mode)
 
     def rotate(self):
         self.rotate_angle = (self.rotate_angle + 90) % 360
@@ -198,8 +352,7 @@ class MJPEGNetworkGuiDemo:
     def toggle_gray(self):
         self.gray = not self.gray
 
-    def get_processed_image(self):
-        img = self.current_img.copy()
+    def process_image(self, img):
         if self.flip_h:
             img = ImageOps.mirror(img)
         if self.flip_v:
@@ -217,71 +370,73 @@ class MJPEGNetworkGuiDemo:
             img = ImageEnhance.Color(img).enhance(SATURATION)
         return img
 
-    def draw_image(self, pil_img):
-        processed = self.get_processed_image() if pil_img is self.current_img else pil_img
-        if self.recording and self.video_writer:
-            frame = cv2.cvtColor(np.array(processed), cv2.COLOR_RGB2BGR)
-            self.video_writer.write(frame)
-        self.tk_img = ImageTk.PhotoImage(processed)
-        self.canvas.create_image(0, 0, anchor=NW, image=self.tk_img)
-
-    def stream_loop(self):
-        log("[Streamer] Starte Debug-Bildzusammenbau...")
-        buffer = b""
-        pkt_counter = 0
-        collecting = False
-        while self.running:
-            try:
-                data, addr = self.sock.recvfrom(65536)
-                pkt_counter += 1
-                if len(data) < 8:
-                    log(f"Pkt {pkt_counter}: Zu kurz! Daten: {binascii.hexlify(data)}")
-                    continue
-
-                header = data[:8]
-                payload = data[8:]
-                log(f"Pkt {pkt_counter}: Header: {binascii.hexlify(header)}, Payload[0:8]: {binascii.hexlify(payload[:8])} ...")
-
-                # --- FIX: Wenn FFD8 erkannt, immer ein neues JPEG starten ---
-                if payload.startswith(b'\xff\xd8'):
-                    if buffer:
-                        log(f"Pkt {pkt_counter}: Buffer war noch da (vermutlich Frame zu groß oder Endekennung gefehlt) – verworfen!")
-                    buffer = payload
-                    collecting = True
-                    log(f"Pkt {pkt_counter}: Start JPEG erkannt!")
-                elif collecting:
-                    buffer += payload
-
-                # Option 1: JPEG-Ende suchen
-                if collecting and b'\xff\xd9' in payload:
-                    # bis inkl. FF D9 übernehmen
-                    end_idx = buffer.find(b'\xff\xd9')
-                    if end_idx != -1:
-                        frame = buffer[:end_idx+2]
-                        log(f"Pkt {pkt_counter}: JPEG vollständig (bis FF D9), Größe {len(frame)} Bytes. Versuche anzuzeigen…")
-                        try:
-                            img = Image.open(io.BytesIO(frame))
-                            self.current_img = img
-                            self.root.after(0, self.draw_image, self.current_img)
-                            log(f"Pkt {pkt_counter}: Bild angezeigt!")
-                        except Exception as e:
-                            log(f"Pkt {pkt_counter}: JPEG Decode fehlgeschlagen: {e}")
-                        buffer = b""
-                        collecting = False
-
-            except Exception as ex:
-                log(f"[Streamer] Fehler: {ex}")
-
-    def on_close(self):
-        self.running = False
-        self.ka_flag["running"] = False
+    def update_image(self, *_):
+        img = self.streamer.get_image()
+        img = self.process_image(img)
+        data = io.BytesIO()
+        img.save(data, format='PNG')
+        tex = CoreImage(io.BytesIO(data.getvalue()), ext='png').texture
+        self.image_widget.texture = tex
         if self.video_writer:
-            self.video_writer.release()
-        try:
-            self.root.destroy()
-        except Exception:
-            pass
-        log("[GUI] Beendet.")
+            frame = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+            self.video_writer.write(frame)
+
+    def start_blink(self):
+        if self.blink_event:
+            self.blink_event.cancel()
+        with self.image_widget.canvas.after:
+            self._color = Color(1, 0, 0, 1)
+            self._ellipse = Ellipse(size=(20, 20), pos=(10, self.image_widget.height-30))
+        self.blink_event = Clock.schedule_interval(self._toggle_indicator, 0.5)
+
+    def stop_blink(self):
+        if self.blink_event:
+            self.blink_event.cancel()
+            self.blink_event = None
+        if hasattr(self, '_ellipse'):
+            self.image_widget.canvas.after.remove(self._color)
+            self.image_widget.canvas.after.remove(self._ellipse)
+
+    def _toggle_indicator(self, *_):
+        if self._color.a == 1:
+            self._color.a = 0
+        else:
+            self._color.a = 1
+
+    def check_stream(self, *_):
+        if not self.streamer.alive():
+            log("stream stalled, restarting", self.debug_mode)
+            self.streamer.restart()
+
+
+class CameraApp(App):
+    def build(self):
+        self.title = "H4R1 Cam Streamer"
+        self.streamer = CameraStreamer()
+        self.streamer.start()
+        self.web = WebServer(self)
+        self.web.start()
+        self.layout = CameraLayout(self.streamer)
+        return self.layout
+
+    @property
+    def settings(self):
+        return settings
+
+    @property
+    def resolutions(self):
+        return RESOLUTIONS
+
+    def update_settings(self, **kwargs):
+        self.layout.apply_config(**kwargs)
+
+    def get_processed_image(self):
+        img = self.streamer.get_image()
+        return self.layout.process_image(img)
+
+    def on_stop(self):
+        self.streamer.stop()
+
 
 if __name__ == "__main__":
-    MJPEGNetworkGuiDemo()
+    CameraApp().run()
