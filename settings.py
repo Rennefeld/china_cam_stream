@@ -10,6 +10,8 @@ class Settings:
     brightness: float = 1.0
     contrast: float = 1.0
     saturation: float = 1.0
+    width: int = 640
+    height: int = 480
 
     PATH = "settings.json"
 

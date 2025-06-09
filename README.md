@@ -1,6 +1,6 @@
 # China Cam Stream
 
-Dieses Programm zeigt einen MJPEG Stream über UDP an und stellt die Bilder sowohl über eine lokale Tkinter GUI als auch über einen integrierten Webserver bereit. Neben dem reinen Anzeigen können verschiedene Bildoperationen angewendet und Aufnahmen erstellt werden.
+Dieses Programm zeigt einen MJPEG Stream über UDP an und nutzt eine moderne Kivy-Oberfläche, die sich besonders für Android im Hochformat eignet. Zusätzlich steht ein integrierter Webserver bereit. Neben dem reinen Anzeigen können verschiedene Bildoperationen angewendet und Aufnahmen erstellt werden.
 
 ## Funktionen
 
@@ -18,11 +18,12 @@ Alle Änderungen werden sofort angewendet und in `settings.json` gespeichert.
 
 ### Steuerbuttons
 
-- **Aufnahme**: Startet bzw. beendet die Videoaufnahme im AVI-Format.
+- **Aufnahme**: Startet bzw. beendet die Videoaufnahme im MPEG-Format.
 - **Snapshot**: Speichert das aktuelle Bild als JPEG.
 - **Rotate**: Rotiert das Bild um 90°.
 - **Flip H/V**: Spiegelt das Bild horizontal bzw. vertikal.
 - **B/W**: Schaltet zwischen Farbe und Graustufen um.
+- **Auflösung**: Vordefinierte Werte bis 1920x1080 wählbar.
 
 ### Webserver
 
