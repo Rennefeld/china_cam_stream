@@ -378,7 +378,11 @@ class CameraLayout(BoxLayout):
     def toggle_gray(self):
         self.gray = not self.gray
 
-    def process_image(self, img):
+    def get_processed_image(self):
+        try:
+            img = self.current_img.copy()
+        except Exception:
+            img = dummy_black_image()
         if self.flip_h:
             img = ImageOps.mirror(img)
         if self.flip_v:
@@ -434,7 +438,28 @@ class CameraLayout(BoxLayout):
             log("stream stalled, restarting", self.debug_mode)
             self.streamer.restart()
 
-
+                # Option 1: JPEG-Ende suchen
+                if collecting and b'\xff\xd9' in payload:
+                    end_idx = buffer.find(b'\xff\xd9')
+                    if end_idx != -1:
+                        frame = buffer[:end_idx + 2]
+                        log(
+                            f"Pkt {pkt_counter}: JPEG vollständig (bis FF D9), Größe {len(frame)} Bytes. Versuche anzuzeigen…"
+                        )
+                        try:
+                            img = Image.open(io.BytesIO(frame))
+                            img = img.convert("RGB")
+                        except Exception as e:
+                            log(f"Pkt {pkt_counter}: JPEG Decode fehlgeschlagen: {e}")
+                            buffer = b""
+                            collecting = False
+                            continue
+                        self.current_img = img
+                        self.root.after(0, self.draw_image, self.current_img)
+                        log(f"Pkt {pkt_counter}: Bild angezeigt!")
+                        buffer = b""
+                        collecting = False
+                        
 class CameraApp(App):
     def build(self):
         self.title = "H4R1 Cam Streamer"
