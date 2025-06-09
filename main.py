@@ -334,7 +334,47 @@ class CameraLayout(BoxLayout):
 
     def save_video(self, path):
         if self.record_temp and os.path.exists(self.record_temp):
-            os.replace(self.record_temp, path)
+            if not FFMPEG:
+                Popup(
+                    title="FFmpeg fehlt",
+                    content=Label(text="Bitte ffmpeg installieren"),
+                    size_hint=(0.6, 0.3),
+                ).open()
+                base, _ = os.path.splitext(path)
+                avi_path = base + ".avi"
+                os.replace(self.record_temp, avi_path)
+                log("ffmpeg not found; saved AVI", self.debug_mode)
+                return
+            cmd = [
+                FFMPEG,
+                "-y",
+                "-i",
+                self.record_temp,
+                "-r",
+                str(VIDEO_FPS),
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "faststart",
+                "-f",
+                "mp4",
+                path,
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                Popup(
+                    title="FFmpeg Fehler",
+                    content=Label(text=result.stderr or "Konvertierung fehlgeschlagen"),
+                    size_hint=(0.6, 0.3),
+                ).open()
+                base, _ = os.path.splitext(path)
+                avi_path = base + ".avi"
+                os.replace(self.record_temp, avi_path)
+                log("ffmpeg failed; saved AVI", self.debug_mode)
+                return
+            os.remove(self.record_temp)
             log(f"video saved to {path}", self.debug_mode)
 
     def snapshot(self, *_):
