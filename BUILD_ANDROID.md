@@ -38,7 +38,7 @@ Diese Anleitung erklaert, wie du aus dem vorhandenen Projekt eine Android-App ba
    | `source.include_exts`    | `py,json`                                                             |
    | `requirements`           | `kivy,flask,pillow,opencv-python,numpy`                               |
    | `android.permissions`    | `INTERNET,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE`               |
-   | `orientation`            | `landscape`                                                           |
+   | `orientation`            | `portrait`                                                           |
 
    Alle Bibliotheken, die im Code verwendet werden (z. B. Flask, OpenCV, Pillow), muessen in `requirements` stehen, damit Buildozer sie automatisch installiert.
 
