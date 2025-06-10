@@ -45,7 +45,6 @@ class _CamStreamPageState extends State<CamStreamPage> {
   final List<Uint8List> _recordedFrames = [];
   Directory? _storageDir;
 
-  // Bildverarbeitung
   bool _rotate = false;
   bool _flipH = false;
   bool _flipV = false;
