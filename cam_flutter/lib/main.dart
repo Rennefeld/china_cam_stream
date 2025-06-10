@@ -1,15 +1,21 @@
 import 'dart:typed_data';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'snapshot_service.dart';
 import 'package:provider/provider.dart';
 import 'udp_stream_receiver.dart';
+import 'settings.dart';
+import 'udp_stream_receiver.dart';
+import 'settings_page.dart';
 
-void main() {
-  runApp(const CamApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final settings = await Settings.load();
+  runApp(ChangeNotifierProvider.value(value: settings, child: const CamApp()));
 }
 
 class CamApp extends StatelessWidget {
@@ -20,7 +26,7 @@ class CamApp extends StatelessWidget {
 }
 
 class _CamAppState extends State<CamApp> {
-  final _channel = WebSocketChannel.connect(Uri.parse('ws://localhost:8081'));
+  late UdpStreamReceiver _receiver;
   Uint8List? _frame;
   bool _recording = false;
   final List<Uint8List> _buffer = [];
@@ -30,6 +36,10 @@ class _CamAppState extends State<CamApp> {
   @override
   void initState() {
     super.initState();
+    final settings = context.read<Settings>();
+    _receiver = UdpStreamReceiver(settings)..onFrame = (f) {
+      setState(() => _frame = f);
+    };
     _initStorage();
     _channel.stream.listen((data) {
       setState(() {
@@ -81,7 +91,17 @@ class _CamAppState extends State<CamApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       home: Scaffold(
-        appBar: AppBar(title: const Text('Cam Stream')),
+        appBar: AppBar(
+          title: const Text('Cam Stream'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.settings),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SettingsPage()),
+              ),
+            )
+          ],
+        ),
         body: Center(
           child: ValueListenableBuilder<Uint8List?>(
             valueListenable: _frameNotifier,
@@ -118,6 +138,7 @@ class _CamView extends StatelessWidget {
 
   @override
   void dispose() {
+    _receiver.dispose();
     _channel.sink.close();
     _frameNotifier.dispose();
     super.dispose();
