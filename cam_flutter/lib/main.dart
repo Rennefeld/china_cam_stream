@@ -1,6 +1,8 @@
 import 'dart:typed_data';
-
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'snapshot_service.dart';
 import 'package:provider/provider.dart';
@@ -20,15 +22,59 @@ class CamApp extends StatelessWidget {
 class _CamAppState extends State<CamApp> {
   final _channel = WebSocketChannel.connect(Uri.parse('ws://localhost:8081'));
   Uint8List? _frame;
+  bool _recording = false;
+  final List<Uint8List> _buffer = [];
+  Directory? _storeDir;
   late final SnapshotService _snapshotService;
 
   @override
   void initState() {
     super.initState();
+    _initStorage();
+    _channel.stream.listen((data) {
+      setState(() {
+        _frame = data as Uint8List;
+        if (_recording) {
+          _buffer.add(Uint8List.fromList(_frame!));
+        }
+      });
     _snapshotService = SnapshotService();
     _channel.stream.listen((data) {
       _frameNotifier.value = data as Uint8List;
     });
+  }
+
+  Future<void> _initStorage() async {
+    _storeDir = await getApplicationDocumentsDirectory();
+  }
+
+  Future<void> _toggleRecord() async {
+    if (!_recording) {
+      setState(() {
+        _recording = true;
+        _buffer.clear();
+      });
+    } else {
+      setState(() {
+        _recording = false;
+      });
+      await _saveRecording();
+    }
+  }
+
+  Future<void> _saveRecording() async {
+    if (_storeDir == null || _buffer.isEmpty) return;
+    final dir = await Directory(
+            '${_storeDir!.path}/${DateTime.now().millisecondsSinceEpoch}')
+        .create();
+    for (var i = 0; i < _buffer.length; i++) {
+      final file = File('${dir.path}/frame_${i.toString().padLeft(6, '0')}.jpg');
+      await file.writeAsBytes(_buffer[i]);
+    }
+    final outPath = '${dir.path}/output.mp4';
+    final cmd =
+        "-y -framerate 30 -i ${dir.path}/frame_%06d.jpg -c:v mpeg4 $outPath";
+    await FFmpegKit.execute(cmd);
   }
 
   @override
@@ -45,6 +91,10 @@ class _CamAppState extends State<CamApp> {
                   : Image.memory(frame);
             },
           ),
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: _toggleRecord,
+          child: Icon(_recording ? Icons.stop : Icons.fiber_manual_record),
         ),
         floatingActionButton: _frame == null
             ? null
