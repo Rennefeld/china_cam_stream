@@ -1,13 +1,14 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:provider/provider.dart';
+import 'udp_stream_receiver.dart';
 
 void main() {
   runApp(const CamApp());
 }
 
-class CamApp extends StatefulWidget {
+class CamApp extends StatelessWidget {
   const CamApp({super.key});
 
   @override
@@ -44,6 +45,10 @@ class _CamAppState extends State<CamApp> {
       ),
     );
   }
+}
+
+class _CamView extends StatelessWidget {
+  const _CamView();
 
   @override
   void dispose() {
