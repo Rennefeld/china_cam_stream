@@ -1,5 +1,5 @@
-import 'dart:convert';
 import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -16,15 +16,13 @@ class CamApp extends StatefulWidget {
 
 class _CamAppState extends State<CamApp> {
   final _channel = WebSocketChannel.connect(Uri.parse('ws://localhost:8081'));
-  Uint8List? _frame;
+  final ValueNotifier<Uint8List?> _frameNotifier = ValueNotifier<Uint8List?>(null);
 
   @override
   void initState() {
     super.initState();
     _channel.stream.listen((data) {
-      setState(() {
-        _frame = data as Uint8List;
-      });
+      _frameNotifier.value = data as Uint8List;
     });
   }
 
@@ -34,9 +32,14 @@ class _CamAppState extends State<CamApp> {
       home: Scaffold(
         appBar: AppBar(title: const Text('Cam Stream')),
         body: Center(
-          child: _frame == null
-              ? const Text('Waiting for stream...')
-              : Image.memory(_frame!),
+          child: ValueListenableBuilder<Uint8List?>(
+            valueListenable: _frameNotifier,
+            builder: (context, frame, _) {
+              return frame == null
+                  ? const Text('Waiting for stream...')
+                  : Image.memory(frame);
+            },
+          ),
         ),
       ),
     );
@@ -45,6 +48,7 @@ class _CamAppState extends State<CamApp> {
   @override
   void dispose() {
     _channel.sink.close();
+    _frameNotifier.dispose();
     super.dispose();
   }
 }
