@@ -36,6 +36,7 @@ RESOLUTIONS = [(640, 480), (800, 600), (1280, 720), (1920, 1080)]
 LOGFILE = "debug_udp_streamer.log"
 VIDEO_CODEC = "XVID"
 VIDEO_FPS = 30
+STREAM_TIMEOUT = 5.0
 
 BRIGHTNESS = settings.brightness
 CONTRAST = settings.contrast
@@ -55,31 +56,37 @@ def log(msg: str) -> None:
 def dummy_black_image() -> Image.Image:
     return Image.new("RGB", (STREAM_WIDTH, STREAM_HEIGHT), "black")
 
-class CameraStreamer:
-    """Receive MJPEG frames over UDP."""
+class UdpStreamReceiver:
+    """Receive MJPEG frames over UDP and monitor health."""
 
     def __init__(self) -> None:
         self.sock: socket.socket | None = None
         self.keepalive_flag = {"running": False}
+        self.monitor_flag = {"running": False}
         self.running = False
         self.local_port: int | None = None
         self.current_img: Image.Image = dummy_black_image()
         self.last_frame_time = 0.0
         self.lock = threading.Lock()
+        self.timeout = STREAM_TIMEOUT
 
     def start(self) -> None:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind(("", 0))
         self.local_port = self.sock.getsockname()[1]
         log(f"[Streamer] listening on UDP {self.local_port}")
+        self.last_frame_time = time.time()
         self.running = True
         self.keepalive_flag["running"] = True
+        self.monitor_flag["running"] = True
         threading.Thread(target=self.keepalive_loop, daemon=True).start()
         threading.Thread(target=self.stream_loop, daemon=True).start()
+        threading.Thread(target=self.monitor_loop, daemon=True).start()
 
     def stop(self) -> None:
         self.running = False
         self.keepalive_flag["running"] = False
+        self.monitor_flag["running"] = False
         if self.sock:
             try:
                 self.sock.close()
@@ -139,6 +146,14 @@ class CameraStreamer:
             except Exception as ex:
                 log(f"stream err {ex}")
 
+    def monitor_loop(self) -> None:
+        while self.monitor_flag["running"]:
+            delay = time.time() - self.last_frame_time
+            if delay > self.timeout:
+                log("stream stalled, reconnecting")
+                self.restart()
+            time.sleep(2)
+
     def get_image(self) -> Image.Image:
         with self.lock:
             try:
@@ -191,7 +206,7 @@ class ConfigPopup(Popup):
         self.dismiss()
 
 class CameraLayout(BoxLayout):
-    def __init__(self, streamer: CameraStreamer, **kwargs) -> None:
+    def __init__(self, streamer: UdpStreamReceiver, **kwargs) -> None:
         super().__init__(orientation="vertical", **kwargs)
         self.streamer = streamer
         self.image_widget = KivyImage(size_hint=(1, 0.9))
@@ -394,7 +409,7 @@ class FileSavePopup(Popup):
 class CameraApp(App):
     def build(self):
         self.title = "H4R1 Cam Streamer"
-        self.streamer = CameraStreamer()
+        self.streamer = UdpStreamReceiver()
         self.streamer.start()
         self.layout = CameraLayout(self.streamer)
         return self.layout
