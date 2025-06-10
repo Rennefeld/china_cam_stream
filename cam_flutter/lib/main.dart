@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'snapshot_service.dart';
 import 'package:provider/provider.dart';
 import 'udp_stream_receiver.dart';
 
@@ -17,11 +19,13 @@ class CamApp extends StatelessWidget {
 
 class _CamAppState extends State<CamApp> {
   final _channel = WebSocketChannel.connect(Uri.parse('ws://localhost:8081'));
-  final ValueNotifier<Uint8List?> _frameNotifier = ValueNotifier<Uint8List?>(null);
+  Uint8List? _frame;
+  late final SnapshotService _snapshotService;
 
   @override
   void initState() {
     super.initState();
+    _snapshotService = SnapshotService();
     _channel.stream.listen((data) {
       _frameNotifier.value = data as Uint8List;
     });
@@ -42,6 +46,18 @@ class _CamAppState extends State<CamApp> {
             },
           ),
         ),
+        floatingActionButton: _frame == null
+            ? null
+            : FloatingActionButton(
+                onPressed: () async {
+                  await _snapshotService.save(_frame!);
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Snapshot saved')),
+                  );
+                },
+                child: const Icon(Icons.camera_alt),
+              ),
       ),
     );
   }
