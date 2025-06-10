@@ -1,10 +1,15 @@
-import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:provider/provider.dart';
 
-void main() {
-  runApp(const CamApp());
+import 'settings.dart';
+import 'udp_stream_receiver.dart';
+import 'settings_page.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final settings = await Settings.load();
+  runApp(ChangeNotifierProvider.value(value: settings, child: const CamApp()));
 }
 
 class CamApp extends StatefulWidget {
@@ -15,24 +20,33 @@ class CamApp extends StatefulWidget {
 }
 
 class _CamAppState extends State<CamApp> {
-  final _channel = WebSocketChannel.connect(Uri.parse('ws://localhost:8081'));
+  late UdpStreamReceiver _receiver;
   Uint8List? _frame;
 
   @override
   void initState() {
     super.initState();
-    _channel.stream.listen((data) {
-      setState(() {
-        _frame = data as Uint8List;
-      });
-    });
+    final settings = context.read<Settings>();
+    _receiver = UdpStreamReceiver(settings)..onFrame = (f) {
+      setState(() => _frame = f);
+    };
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       home: Scaffold(
-        appBar: AppBar(title: const Text('Cam Stream')),
+        appBar: AppBar(
+          title: const Text('Cam Stream'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.settings),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SettingsPage()),
+              ),
+            )
+          ],
+        ),
         body: Center(
           child: _frame == null
               ? const Text('Waiting for stream...')
@@ -44,7 +58,7 @@ class _CamAppState extends State<CamApp> {
 
   @override
   void dispose() {
-    _channel.sink.close();
+    _receiver.dispose();
     super.dispose();
   }
 }
