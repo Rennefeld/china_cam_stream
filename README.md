@@ -44,18 +44,3 @@ pip install opencv-python pillow numpy flask kivy
 ```
 
 Die Videoaufnahmen werden direkt im AVI-Format mit dem XVID-Codec gespeichert.
-
-
-## Android-Build unter Windows 10
-
-1. Installieren Sie **WSL2** sowie ein aktuelles Ubuntu.
-2. Innerhalb von WSL Python 3, `pip` und `buildozer` installieren:
-   ```bash
-   sudo apt update && sudo apt install python3 python3-pip -y
-   pip install buildozer
-   ```
-3. Erstellen Sie eine Kivy-App-Hülle für `main.py` und passen Sie die `buildozer.spec` an.
-4. Führen Sie `buildozer -v android debug` innerhalb von WSL aus. 
-   Das erzeugte APK finden Sie danach im Unterordner `bin/`.
-5. Übertragen Sie das APK auf Ihr Android-Gerät und installieren Sie es.
-
