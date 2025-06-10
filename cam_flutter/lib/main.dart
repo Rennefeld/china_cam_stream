@@ -12,6 +12,7 @@ import 'udp_stream_receiver.dart';
 import 'settings.dart';
 import 'udp_stream_receiver.dart';
 import 'settings_page.dart';
+import 'frame_processor.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,6 +34,9 @@ class CamApp extends StatelessWidget {
 }
 
 class _CamAppState extends State<CamApp> {
+  //warum 8081 ?? muss da nicht der ephemeral port hin ?
+  final _channel = WebSocketChannel.connect(Uri.parse('ws://localhost:8081'));
+  Uint8List? _rawFrame;
   late final WebSocketChannel _channel;
   late UdpStreamReceiver _receiver;
   Uint8List? _frame;
@@ -40,6 +44,11 @@ class _CamAppState extends State<CamApp> {
   final List<Uint8List> _buffer = [];
   Directory? _storeDir;
   late final SnapshotService _snapshotService;
+
+  bool _rotate = false;
+  bool _flipH = false;
+  bool _flipV = false;
+  bool _grayscale = false;
 
   @override
   void initState() {
@@ -66,6 +75,21 @@ class _CamAppState extends State<CamApp> {
     };
     _initStorage();
     _channel.stream.listen((data) {
+      _rawFrame = data as Uint8List;
+      _applyProcessing();
+    });
+  }
+
+  void _applyProcessing() {
+    if (_rawFrame == null) return;
+    final processor = FrameProcessor(
+      rotate90: _rotate,
+      flipH: _flipH,
+      flipV: _flipV,
+      grayscale: _grayscale,
+    );
+    setState(() {
+      _frame = processor.process(_rawFrame!);
       setState(() {
         _frame = data as Uint8List;
         if (_recording) {
@@ -115,6 +139,48 @@ class _CamAppState extends State<CamApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       home: Scaffold(
+        appBar: AppBar(title: const Text('Cam Stream')),
+        body: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: ToggleButtons(
+                isSelected: [_rotate, _flipH, _flipV, _grayscale],
+                onPressed: (index) {
+                  setState(() {
+                    switch (index) {
+                      case 0:
+                        _rotate = !_rotate;
+                        break;
+                      case 1:
+                        _flipH = !_flipH;
+                        break;
+                      case 2:
+                        _flipV = !_flipV;
+                        break;
+                      case 3:
+                        _grayscale = !_grayscale;
+                        break;
+                    }
+                  });
+                  _applyProcessing();
+                },
+                children: const [
+                  Icon(Icons.rotate_90_degrees_ccw),
+                  Icon(Icons.swap_horiz),
+                  Icon(Icons.swap_vert),
+                  Icon(Icons.filter_b_and_w),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Center(
+                child: _frame == null
+                    ? const Text('Waiting for stream...')
+                    : Image.memory(_frame!),
+              ),
+            ),
+          ],
         appBar: AppBar(
           title: const Text('Cam Stream'),
           actions: [
