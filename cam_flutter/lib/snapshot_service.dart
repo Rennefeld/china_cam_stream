@@ -1,20 +1,27 @@
+
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
 
-import 'package:path_provider/path_provider.dart';
-
-/// Simple service responsible for storing JPEG frames on disk.
 class SnapshotService {
-  /// Saves [jpeg] with a timestamp based name into the app documents directory.
-  ///
-  /// Returns the path of the written file.
-  Future<String> save(Uint8List jpeg) async {
-    final dir = await getApplicationDocumentsDirectory();
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final path = '${dir.path}/snapshot_$timestamp.jpg';
-    final file = File(path);
-    await file.writeAsBytes(jpeg);
-    return path;
+  void saveSnapshot(Uint8List bytes, Directory dir) {
+    final file = File("\${dir.path}/snapshot_\${DateTime.now().millisecondsSinceEpoch}.jpg");
+    file.writeAsBytesSync(bytes);
+  }
+
+  void saveVideo(List<Uint8List> frames, Directory dir) async {
+    final frameDir = Directory("\${dir.path}/temp_frames");
+    if (!frameDir.existsSync()) frameDir.createSync();
+
+    for (int i = 0; i < frames.length; i++) {
+      final frameFile = File("\${frameDir.path}/frame_\${i.toString().padLeft(4, '0')}.jpg");
+      frameFile.writeAsBytesSync(frames[i]);
+    }
+
+    final output = "\${dir.path}/recording_\${DateTime.now().millisecondsSinceEpoch}.mp4";
+    final cmd = "-framerate 10 -i \${frameDir.path}/frame_%04d.jpg -c:v libx264 -pix_fmt yuv420p $output";
+    await FFmpegKit.execute(cmd);
+
+    frameDir.deleteSync(recursive: true);
   }
 }
-
