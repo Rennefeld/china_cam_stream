@@ -1,39 +1,31 @@
+
 import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 
-/// Processes raw frame bytes applying optional transformations.
 class FrameProcessor {
   final bool rotate90;
   final bool flipH;
   final bool flipV;
   final bool grayscale;
 
-  const FrameProcessor({
+  FrameProcessor({
     this.rotate90 = false,
     this.flipH = false,
     this.flipV = false,
     this.grayscale = false,
   });
 
-  /// Applies the configured transformations to [bytes].
-  Uint8List process(Uint8List bytes) {
-    final img.Image? original = img.decodeImage(bytes);
-    if (original == null) return bytes;
-    img.Image frame = original;
+  Uint8List process(Uint8List input) {
+    final image = img.decodeImage(input);
+    if (image == null) return input;
 
-    if (rotate90) {
-      frame = img.copyRotate(frame, 90);
-    }
-    if (flipH) {
-      frame = img.flipHorizontal(frame);
-    }
-    if (flipV) {
-      frame = img.flipVertical(frame);
-    }
-    if (grayscale) {
-      frame = img.grayscale(frame);
-    }
+    img.Image processed = image;
 
-    return Uint8List.fromList(img.encodeJpg(frame));
+    if (flipH) processed = img.flipHorizontal(processed);
+    if (flipV) processed = img.flipVertical(processed);
+    if (rotate90) processed = img.copyRotate(processed, 90);
+    if (grayscale) processed = img.grayscale(processed);
+
+    return Uint8List.fromList(img.encodeJpg(processed));
   }
 }
