@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'services/log_service.dart';
 import 'snapshot_service.dart';
 import 'package:provider/provider.dart';
 import 'udp_stream_receiver.dart';
@@ -12,6 +13,12 @@ import 'settings.dart';
 import 'udp_stream_receiver.dart';
 import 'settings_page.dart';
 
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await LogService.init();
+  LogService.instance.info('Application started');
+  runApp(const CamApp());
+  
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final settings = await Settings.load();
@@ -26,6 +33,7 @@ class CamApp extends StatelessWidget {
 }
 
 class _CamAppState extends State<CamApp> {
+  late final WebSocketChannel _channel;
   late UdpStreamReceiver _receiver;
   Uint8List? _frame;
   bool _recording = false;
@@ -36,6 +44,22 @@ class _CamAppState extends State<CamApp> {
   @override
   void initState() {
     super.initState();
+    LogService.instance.info('Connecting to stream');
+    _channel = WebSocketChannel.connect(Uri.parse('ws://localhost:8081'));
+    _channel.stream.listen(
+      (data) {
+        setState(() {
+          _frame = data as Uint8List;
+        });
+      },
+      onError: (error) {
+        LogService.instance.error('WebSocket error: $error');
+      },
+      onDone: () {
+        LogService.instance.info('WebSocket closed');
+      },
+    );
+    
     final settings = context.read<Settings>();
     _receiver = UdpStreamReceiver(settings)..onFrame = (f) {
       setState(() => _frame = f);
@@ -138,6 +162,7 @@ class _CamView extends StatelessWidget {
 
   @override
   void dispose() {
+    LogService.instance.info('Disposing app');
     _receiver.dispose();
     _channel.sink.close();
     _frameNotifier.dispose();
