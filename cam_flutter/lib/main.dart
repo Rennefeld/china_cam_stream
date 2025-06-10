@@ -4,12 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'snapshot_service.dart';
+import 'package:provider/provider.dart';
+import 'udp_stream_receiver.dart';
 
 void main() {
   runApp(const CamApp());
 }
 
-class CamApp extends StatefulWidget {
+class CamApp extends StatelessWidget {
   const CamApp({super.key});
 
   @override
@@ -22,6 +25,7 @@ class _CamAppState extends State<CamApp> {
   bool _recording = false;
   final List<Uint8List> _buffer = [];
   Directory? _storeDir;
+  late final SnapshotService _snapshotService;
 
   @override
   void initState() {
@@ -34,6 +38,9 @@ class _CamAppState extends State<CamApp> {
           _buffer.add(Uint8List.fromList(_frame!));
         }
       });
+    _snapshotService = SnapshotService();
+    _channel.stream.listen((data) {
+      _frameNotifier.value = data as Uint8List;
     });
   }
 
@@ -76,21 +83,43 @@ class _CamAppState extends State<CamApp> {
       home: Scaffold(
         appBar: AppBar(title: const Text('Cam Stream')),
         body: Center(
-          child: _frame == null
-              ? const Text('Waiting for stream...')
-              : Image.memory(_frame!),
+          child: ValueListenableBuilder<Uint8List?>(
+            valueListenable: _frameNotifier,
+            builder: (context, frame, _) {
+              return frame == null
+                  ? const Text('Waiting for stream...')
+                  : Image.memory(frame);
+            },
+          ),
         ),
         floatingActionButton: FloatingActionButton(
           onPressed: _toggleRecord,
           child: Icon(_recording ? Icons.stop : Icons.fiber_manual_record),
         ),
+        floatingActionButton: _frame == null
+            ? null
+            : FloatingActionButton(
+                onPressed: () async {
+                  await _snapshotService.save(_frame!);
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Snapshot saved')),
+                  );
+                },
+                child: const Icon(Icons.camera_alt),
+              ),
       ),
     );
   }
+}
+
+class _CamView extends StatelessWidget {
+  const _CamView();
 
   @override
   void dispose() {
     _channel.sink.close();
+    _frameNotifier.dispose();
     super.dispose();
   }
 }
